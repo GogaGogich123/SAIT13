@@ -7,6 +7,10 @@ config();
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+console.log('DEBUG: VITE_SUPABASE_URL:', supabaseUrl);
+console.log('DEBUG: SUPABASE_SERVICE_ROLE_KEY (first 10 chars):', supabaseServiceKey ? supabaseServiceKey.substring(0, 10) + '...' : 'NOT SET');
+console.log('DEBUG: Environment check complete\n');
+
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('❌ Отсутствуют необходимые переменные окружения:');
   console.error('VITE_SUPABASE_URL:', supabaseUrl ? '✅' : '❌');
