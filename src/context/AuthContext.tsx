@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { authenticateUser, getCadetByAuthId, signOut, getCurrentUser, type AuthUser } from '../lib/auth';
+import { getCadetByAuthId, signOut, getCurrentUser, type AuthUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
 interface User {
@@ -41,6 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Проверяем текущую сессию Supabase при загрузке
     const checkCurrentSession = async () => {
+      setLoading(true);
       try {
         console.log('🔄 Starting auth session check...');
         
@@ -50,23 +51,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           handleAuthTimeout();
         }, 15000);
         
-        const currentUser = await getCurrentUser();
-        if (currentUser) {
-          console.log('Current user found:', currentUser);
-          await handleAuthUser(currentUser);
-        } else {
-          console.log('No current user found');
-        }
-      } catch (error) {
-        console.error('Error checking current session:', error);
-      } finally {
-        // Очищаем таймер при завершении загрузки
+        // Получаем пользователя напрямую из Supabase auth
+        const { data: { user: supabaseUser }, error: supabaseError } = await supabase.auth.getUser();
+        
+        // Очищаем таймер сразу после получения ответа от Supabase
         if (loadingTimeoutRef.current) {
           clearTimeout(loadingTimeoutRef.current);
           loadingTimeoutRef.current = null;
         }
-        console.log('✅ Auth session check completed');
+
+        if (supabaseError) {
+          console.error('Supabase getUser error:', supabaseError);
+          setUser(null);
+          localStorage.removeItem('auth_user');
+          setShouldRedirect(true);
+          return;
+        }
+
+        if (supabaseUser) {
+          console.log('Supabase user found:', supabaseUser.email);
+          const currentUser = await getCurrentUser();
+          if (currentUser) {
+            console.log('Current user data from DB found:', currentUser);
+            const success = await handleAuthUser(currentUser);
+            if (success) {
+              setShouldRedirect(false);
+            } else {
+              console.warn('Failed to process auth user data, redirecting to login.');
+              setUser(null);
+              localStorage.removeItem('auth_user');
+              setShouldRedirect(true);
+            }
+          } else {
+            console.warn('No user data found in DB for authenticated Supabase user. Forcing logout.');
+            setUser(null);
+            localStorage.removeItem('auth_user');
+            setShouldRedirect(true);
+          }
+        } else {
+          console.log('No current user found');
+          setUser(null);
+          localStorage.removeItem('auth_user');
+        }
+      } catch (error) {
+        console.error('Error checking current session:', error);
+        setUser(null);
+        localStorage.removeItem('auth_user');
+        setShouldRedirect(true);
+      } finally {
         setLoading(false);
+        console.log('✅ Auth session check completed');
       }
     };
 
@@ -174,27 +208,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleAuthTimeout();
       }, 10000);
       
-      const authUser = await authenticateUser({
+      // Используем Supabase signInWithPassword напрямую
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      // Очищаем таймер при успешном логине
+      // Очищаем таймер сразу после получения ответа от Supabase
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
       }
 
-      if (authUser) {
-        console.log('Authentication successful:', authUser);
-        return await handleAuthUser(authUser);
+      if (authError) {
+        console.error('Supabase signInWithPassword error:', authError);
+        return false;
       }
 
-      console.log('Authentication failed');
+      if (authData.user) {
+        console.log('Authentication successful with Supabase user:', authData.user.email);
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
+          const success = await handleAuthUser(currentUser);
+          if (success) {
+            setShouldRedirect(false);
+            return true;
+          } else {
+            console.warn('Failed to process auth user data after login.');
+            setUser(null);
+            localStorage.removeItem('auth_user');
+            setShouldRedirect(true);
+            return false;
+          }
+        } else {
+          console.warn('No user data found in DB for newly authenticated Supabase user.');
+          setUser(null);
+          localStorage.removeItem('auth_user');
+          setShouldRedirect(true);
+          return false;
+        }
+      }
+
+      console.log('Authentication failed: No user data from Supabase.');
       return false;
     } catch (error) {
       console.error('Login error:', error);
-      // Очищаем таймер при ошибке
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
