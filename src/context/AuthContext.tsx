@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { authenticateUser, getCadetByAuthId, signOut, getCurrentUser, type AuthUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 
