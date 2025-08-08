@@ -1,5 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import Header from './components/Header';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -17,14 +19,26 @@ import { useToast } from './hooks/useToast';
 
 const AppContent: React.FC = () => {
   const { toasts, removeToast } = useToast();
-  const { loading } = useAuth();
+  const { loading, shouldRedirect, user } = useAuth();
+  const navigate = useNavigate();
+
+  // Обрабатываем редирект при таймауте или принудительном выходе
+  useEffect(() => {
+    if (shouldRedirect) {
+      console.log('🔄 Redirecting to login due to auth timeout or logout');
+      navigate('/login');
+    }
+  }, [shouldRedirect, navigate]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center gradient-bg">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-yellow-400 mx-auto mb-4"></div>
-          <p className="text-white text-xl">Загрузка...</p>
+          <p className="text-white text-xl mb-4">Загрузка...</p>
+          <p className="text-blue-200 text-sm">
+            Если загрузка занимает слишком много времени, вы будете автоматически перенаправлены на страницу входа
+          </p>
         </div>
       </div>
     );

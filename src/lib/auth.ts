@@ -139,23 +139,30 @@ export const signOut = async () => {
 // Получение текущего пользователя
 export const getCurrentUser = async (): Promise<AuthUser | null> => {
   try {
+    console.log('🔍 Getting current user from Supabase...');
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
+      console.log('❌ No authenticated user found');
       return null;
     }
+
+    console.log('✅ Authenticated user found:', user.email);
 
     // Получаем данные из таблицы users
     const { data: userData, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', user.email!)
+      .eq('id', user.id)
       .single();
 
     if (error) {
       safeLog('Error fetching current user data', handleSupabaseError(error));
+      console.log('❌ Failed to fetch user data from users table');
       return null;
     }
+
+    console.log('✅ User data fetched successfully:', userData.email, userData.role);
 
     return {
       id: user.id,
@@ -165,6 +172,7 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
     };
   } catch (error) {
     safeLog('Error getting current user', error);
+    console.log('❌ Error in getCurrentUser:', error);
     return null;
   }
 };
