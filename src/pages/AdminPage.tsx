@@ -10,6 +10,7 @@ import AdminQuickActions from '../components/admin/AdminQuickActions';
 import AdminTabs from '../components/admin/AdminTabs';
 import AchievementModal from '../components/admin/modals/AchievementModal';
 import ScoreModal from '../components/admin/modals/ScoreModal';
+import CadetModal from '../components/admin/modals/CadetModal';
 import { 
   getCadets,
   getAchievements,
@@ -33,6 +34,7 @@ import {
   type News,
   type Task
 } from '../lib/supabase';
+import { createCadetWithAuth, updateCadetData, deleteCadet } from '../lib/admin';
 import { fadeInUp, staggerContainer, staggerItem } from '../utils/animations';
 interface AchievementForm {
   title: string;
@@ -58,6 +60,16 @@ interface NewsForm {
   images: string[];
 }
 
+interface CadetForm {
+  name: string;
+  email: string;
+  phone: string;
+  platoon: string;
+  squad: number;
+  password: string;
+  avatar_url: string;
+}
+
 const AdminPage: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const { success, error: showError } = useToast();
@@ -77,8 +89,11 @@ const AdminPage: React.FC = () => {
   const [showAwardModal, setShowAwardModal] = useState(false);
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [showNewsModal, setShowNewsModal] = useState(false);
+  const [showCadetModal, setShowCadetModal] = useState(false);
   const [editingAchievement, setEditingAchievement] = useState<Achievement | null>(null);
   const [editingNews, setEditingNews] = useState<News | null>(null);
+  const [editingCadet, setEditingCadet] = useState<Cadet | null>(null);
+  const [cadetModalLoading, setCadetModalLoading] = useState(false);
   
   // Form states  
   const [achievementForm, setAchievementForm] = useState<AchievementForm>({
@@ -103,6 +118,16 @@ const AdminPage: React.FC = () => {
     is_main: false,
     background_image_url: '',
     images: []
+  });
+
+  const [cadetForm, setCadetForm] = useState<CadetForm>({
+    name: '',
+    email: '',
+    phone: '',
+    platoon: '',
+    squad: 0,
+    password: '',
+    avatar_url: ''
   });
 
   const [selectedCadetForAward, setSelectedCadetForAward] = useState<string>('');
@@ -293,6 +318,76 @@ const AdminPage: React.FC = () => {
     }
   };
   
+  const handleCreateCadet = async () => {
+    try {
+      setCadetModalLoading(true);
+      
+      if (!cadetForm.name || !cadetForm.email || !cadetForm.platoon || !cadetForm.squad || !cadetForm.password) {
+        showError('Заполните все обязательные поля');
+        return;
+      }
+      
+      const newCadet = await createCadetWithAuth(cadetForm);
+      setCadets([...cadets, newCadet]);
+      setShowCadetModal(false);
+      setCadetForm({
+        name: '',
+        email: '',
+        phone: '',
+        platoon: '',
+        squad: 0,
+        password: '',
+        avatar_url: ''
+      });
+      success('Кадет успешно создан');
+    } catch (err: any) {
+      showError(err.message || 'Ошибка создания кадета');
+    } finally {
+      setCadetModalLoading(false);
+    }
+  };
+  
+  const handleUpdateCadet = async () => {
+    if (!editingCadet) return;
+    
+    try {
+      setCadetModalLoading(true);
+      
+      const updates = {
+        name: cadetForm.name,
+        email: cadetForm.email,
+        phone: cadetForm.phone || null,
+        platoon: cadetForm.platoon,
+        squad: cadetForm.squad,
+        avatar_url: cadetForm.avatar_url || null
+      };
+      
+      const updatedCadet = await updateCadetData(editingCadet.id, updates);
+      setCadets(cadets.map(c => 
+        c.id === editingCadet.id ? { ...c, ...updatedCadet } : c
+      ));
+      setShowCadetModal(false);
+      setEditingCadet(null);
+      success('Кадет обновлен');
+    } catch (err: any) {
+      showError(err.message || 'Ошибка обновления кадета');
+    } finally {
+      setCadetModalLoading(false);
+    }
+  };
+  
+  const handleDeleteCadet = async (cadetId: string, cadetName: string) => {
+    if (!confirm(`Удалить кадета "${cadetName}"? Это также удалит его учетную запись для входа в систему.`)) return;
+    
+    try {
+      await deleteCadet(cadetId);
+      setCadets(cadets.filter(c => c.id !== cadetId));
+      success('Кадет удален');
+    } catch (err: any) {
+      showError(err.message || 'Ошибка удаления кадета');
+    }
+  };
+  
   const openEditAchievement = (achievement: Achievement) => {
     setEditingAchievement(achievement);
     setAchievementForm({
@@ -316,6 +411,20 @@ const AdminPage: React.FC = () => {
       images: newsItem.images || []
     });
     setShowNewsModal(true);
+  };
+  
+  const openEditCadet = (cadet: Cadet) => {
+    setEditingCadet(cadet);
+    setCadetForm({
+      name: cadet.name,
+      email: cadet.email,
+      phone: cadet.phone || '',
+      platoon: cadet.platoon,
+      squad: cadet.squad,
+      password: '', // Пароль не редактируется
+      avatar_url: cadet.avatar_url || ''
+    });
+    setShowCadetModal(true);
   };
   
   const filteredCadets = cadets.filter(cadet => {
@@ -388,6 +497,7 @@ const AdminPage: React.FC = () => {
                     onAwardAchievement={() => setShowAwardModal(true)}
                     onAddScore={() => setShowScoreModal(true)}
                     onCreateNews={() => setShowNewsModal(true)}
+                    onCreateCadet={() => setShowCadetModal(true)}
                   />
                 </div>
               )}
@@ -400,6 +510,17 @@ const AdminPage: React.FC = () => {
                   animate="visible"
                   className="space-y-8"
                 >
+                  {/* Header */}
+                  <motion.div variants={staggerItem} className="flex justify-between items-center">
+                    <h2 className="text-3xl font-bold text-white">Кадеты</h2>
+                    <button
+                      onClick={() => setShowCadetModal(true)}
+                      className="btn-primary flex items-center space-x-2"
+                    >
+                      <span>Добавить кадета</span>
+                    </button>
+                  </motion.div>
+
                   {/* Filters */}
                   <div className="card-hover p-6">
                     <div className="flex flex-col md:flex-row gap-4">
@@ -456,6 +577,21 @@ const AdminPage: React.FC = () => {
                         <div className="flex justify-between items-center">
                           <span className="text-blue-200">Баллы:</span>
                           <span className="text-2xl font-bold text-white">{cadet.total_score}</span>
+                        </div>
+                        
+                        <div className="flex space-x-2 mt-4">
+                          <button
+                            onClick={() => openEditCadet(cadet)}
+                            className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            Редактировать
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCadet(cadet.id, cadet.name)}
+                            className="bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                          >
+                            Удалить
+                          </button>
                         </div>
                       </motion.div>
                     ))}
@@ -618,6 +754,29 @@ const AdminPage: React.FC = () => {
           {showNewsModal && (
             <div>News Modal Placeholder</div>
           )}
+
+          {/* Cadet Modal */}
+          <CadetModal
+            isOpen={showCadetModal}
+            onClose={() => {
+              setShowCadetModal(false);
+              setEditingCadet(null);
+              setCadetForm({
+                name: '',
+                email: '',
+                phone: '',
+                platoon: '',
+                squad: 0,
+                password: '',
+                avatar_url: ''
+              });
+            }}
+            onSubmit={editingCadet ? handleUpdateCadet : handleCreateCadet}
+            form={cadetForm}
+            setForm={setCadetForm}
+            isEditing={!!editingCadet}
+            loading={cadetModalLoading}
+          />
         </div>
       </div>
     </motion.div>
